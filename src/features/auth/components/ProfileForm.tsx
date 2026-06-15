@@ -6,6 +6,65 @@ import { apiService, API_BASE_URL } from '../../../api/client';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
+const getPasswordStrength = (pwd: string) => {
+  if (pwd.length === 0) return { score: 0, label: '', color: '#adb5bd' };
+  
+  let score = 0;
+  if (pwd.length >= 8) score += 1;
+  if (/[a-zA-Z]/.test(pwd)) score += 1;
+  if (/\d/.test(pwd)) score += 1;
+  if (/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(pwd)) score += 1;
+
+  // 연속성/반복성 감점 요인 체크 (3자 이상 연속/반복 시 페널티 적용)
+  let hasSequence = false;
+  const keyboardPatterns = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm', '1234567890'];
+  const lowerPwd = pwd.toLowerCase();
+  
+  for (let i = 0; i < lowerPwd.length - 2; i++) {
+    const char1 = lowerPwd.charCodeAt(i);
+    const char2 = lowerPwd.charCodeAt(i + 1);
+    const char3 = lowerPwd.charCodeAt(i + 2);
+    
+    // 1) 알파벳/숫자 순차 증가 (abc, 123) 또는 감소 (cba, 321)
+    if ((char2 === char1 + 1 && char3 === char2 + 1) || (char2 === char1 - 1 && char3 === char2 - 1)) {
+      hasSequence = true;
+      break;
+    }
+    
+    // 2) 동일 문자 3회 연속 반복 (aaa, 111)
+    if (char1 === char2 && char2 === char3) {
+      hasSequence = true;
+      break;
+    }
+    
+    // 3) 키보드 QWERTY 배열 3자 연속 체크 (qwe, asd, zxc 등)
+    const chunk = lowerPwd.substring(i, i + 3);
+    for (const pattern of keyboardPatterns) {
+      if (pattern.includes(chunk) || pattern.split('').reverse().join('').includes(chunk)) {
+        hasSequence = true;
+        break;
+      }
+    }
+    if (hasSequence) break;
+  }
+
+  if (pwd.length < 8) {
+    return { score: 1, label: '위험 (8자 미만)', color: '#fa5252' };
+  }
+  
+  if (hasSequence) {
+    return { score: 1, label: '위험 (연속/반복 패턴 포함)', color: '#fa5252' };
+  }
+  
+  if (score === 4) {
+    return { score: 3, label: '안전 (보안성 높음)', color: '#2b8a3e' };
+  } else if (score === 3) {
+    return { score: 2, label: '보통 (특수문자 추가 권장)', color: '#f59f00' };
+  } else {
+    return { score: 1, label: '위험 (조합 부족)', color: '#fa5252' };
+  }
+};
+
 export default function ProfileForm() {
   const { user, setUser, logout } = useAuth();
   const [nickname, setNickname] = useState(user?.nickname || '');
@@ -48,6 +107,15 @@ export default function ProfileForm() {
     if (!nickname.trim()) {
       Alert.alert('알림', '닉네임을 입력해 주세요.');
       return;
+    }
+
+    // 비밀번호 변경 입력 시 보안 조건 체크 (영문, 숫자, 특수문자 포함 8자 이상)
+    if (password) {
+      const passwordRegex = /^(?=.*[a-zA-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{8,}$/;
+      if (!passwordRegex.test(password)) {
+        Alert.alert('보안 경고', '새 비밀번호는 영문, 숫자, 특수문자를 모두 혼합하여 8자 이상으로 설정해야 합니다.');
+        return;
+      }
     }
 
     setLoading(true);
@@ -208,9 +276,27 @@ export default function ProfileForm() {
               value={password}
               onChangeText={setPassword}
               style={styles.input}
-              placeholder="새 비밀번호"
+              placeholder="새 비밀번호 (영문, 숫자, 특수문자 조합 8자 이상)"
               secureTextEntry
             />
+            {password.length > 0 && (
+              <View style={styles.strengthContainer}>
+                <View style={styles.strengthBarRow}>
+                  <View style={[styles.strengthBar, { backgroundColor: getPasswordStrength(password).score >= 1 ? getPasswordStrength(password).color : '#e9ecef' }]} />
+                  <View style={[styles.strengthBar, { backgroundColor: getPasswordStrength(password).score >= 2 ? getPasswordStrength(password).color : '#e9ecef' }]} />
+                  <View style={[styles.strengthBar, { backgroundColor: getPasswordStrength(password).score >= 3 ? getPasswordStrength(password).color : '#e9ecef' }]} />
+                </View>
+                <Text style={[styles.strengthLabel, { color: getPasswordStrength(password).color }]}>
+                  보안 등급: {getPasswordStrength(password).label}
+                </Text>
+              </View>
+            )}
+            {password.length > 0 && !/^(?=.*[a-zA-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{8,}$/.test(password) && (
+              <Text style={styles.errorMessage}>영문, 숫자, 특수문자를 혼합하여 8자 이상이어야 합니다.</Text>
+            )}
+            {password.length > 0 && /^(?=.*[a-zA-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{8,}$/.test(password) && (
+              <Text style={styles.successMessage}>사용 가능한 비밀번호입니다.</Text>
+            )}
           </>
         )}
 
@@ -412,5 +498,38 @@ const styles = StyleSheet.create({
     backgroundColor: '#dee2e6',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  errorMessage: {
+    color: '#fa5252',
+    fontSize: 12,
+    marginTop: -12,
+    marginBottom: 16,
+    fontWeight: '600',
+  },
+  successMessage: {
+    color: '#2b8a3e',
+    fontSize: 12,
+    marginTop: -12,
+    marginBottom: 16,
+    fontWeight: '600',
+  },
+  strengthContainer: {
+    marginTop: -8,
+    marginBottom: 16,
+  },
+  strengthBarRow: {
+    flexDirection: 'row',
+    gap: 4,
+    height: 4,
+    marginBottom: 6,
+  },
+  strengthBar: {
+    flex: 1,
+    height: '100%',
+    borderRadius: 2,
+  },
+  strengthLabel: {
+    fontSize: 12,
+    fontWeight: 'bold',
   },
 });

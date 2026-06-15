@@ -15,6 +15,7 @@ interface AuthContextType {
   isLoading: boolean;
   checkLogin: () => Promise<void>;
   logout: () => void;
+  isPhoneVerified: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -116,8 +117,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => clearTimeout(timer);
   }, [userToken, segments, isLoading]);
 
+  const isPhoneVerified = !!(user && user.phoneNumber && /^01[0-9]-?[0-9]{3,4}-?[0-9]{4}$/.test(user.phoneNumber) && user.phoneNumber !== '000-0000-0000');
+
   return (
-    <AuthContext.Provider value={{ user, setUser, userToken, setUserToken, isLoading, checkLogin, logout }}>
+    <AuthContext.Provider value={{ user, setUser, userToken, setUserToken, isLoading, checkLogin, logout, isPhoneVerified }}>
       {children}
     </AuthContext.Provider>
   );

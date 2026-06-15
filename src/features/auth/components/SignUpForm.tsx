@@ -6,6 +6,65 @@ import PortOneAuthWebView from './PortOneAuthWebView';
 import { Ionicons } from '@expo/vector-icons';
 
 
+const getPasswordStrength = (pwd: string) => {
+  if (pwd.length === 0) return { score: 0, label: '', color: '#adb5bd' };
+  
+  let score = 0;
+  if (pwd.length >= 8) score += 1;
+  if (/[a-zA-Z]/.test(pwd)) score += 1;
+  if (/\d/.test(pwd)) score += 1;
+  if (/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(pwd)) score += 1;
+
+  // 연속성/반복성 감점 요인 체크 (3자 이상 연속/반복 시 페널티 적용)
+  let hasSequence = false;
+  const keyboardPatterns = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm', '1234567890'];
+  const lowerPwd = pwd.toLowerCase();
+  
+  for (let i = 0; i < lowerPwd.length - 2; i++) {
+    const char1 = lowerPwd.charCodeAt(i);
+    const char2 = lowerPwd.charCodeAt(i + 1);
+    const char3 = lowerPwd.charCodeAt(i + 2);
+    
+    // 1) 알파벳/숫자 순차 증가 (abc, 123) 또는 감소 (cba, 321)
+    if ((char2 === char1 + 1 && char3 === char2 + 1) || (char2 === char1 - 1 && char3 === char2 - 1)) {
+      hasSequence = true;
+      break;
+    }
+    
+    // 2) 동일 문자 3회 연속 반복 (aaa, 111)
+    if (char1 === char2 && char2 === char3) {
+      hasSequence = true;
+      break;
+    }
+    
+    // 3) 키보드 QWERTY 배열 3자 연속 체크 (qwe, asd, zxc 등)
+    const chunk = lowerPwd.substring(i, i + 3);
+    for (const pattern of keyboardPatterns) {
+      if (pattern.includes(chunk) || pattern.split('').reverse().join('').includes(chunk)) {
+        hasSequence = true;
+        break;
+      }
+    }
+    if (hasSequence) break;
+  }
+
+  if (pwd.length < 8) {
+    return { score: 1, label: '위험 (8자 미만)', color: '#fa5252' };
+  }
+  
+  if (hasSequence) {
+    return { score: 1, label: '위험 (연속/반복 패턴 포함)', color: '#fa5252' };
+  }
+  
+  if (score === 4) {
+    return { score: 3, label: '안전 (보안성 높음)', color: '#2b8a3e' };
+  } else if (score === 3) {
+    return { score: 2, label: '보통 (특수문자 추가 권장)', color: '#f59f00' };
+  } else {
+    return { score: 1, label: '위험 (조합 부족)', color: '#fa5252' };
+  }
+};
+
 export default function SignUpForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -61,6 +120,13 @@ export default function SignUpForm() {
   const handleSignUp = async () => {
     if (!email || !password || !passwordConfirm || !nickname) {
       Alert.alert('알림', '모든 입력 항목을 채워주세요.');
+      return;
+    }
+
+    // 비밀번호 보안 조건 체크 (영문, 숫자, 특수문자 포함 8자 이상)
+    const passwordRegex = /^(?=.*[a-zA-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{8,}$/;
+    if (!passwordRegex.test(password)) {
+      Alert.alert('보안 경고', '비밀번호 조건을 충족하지 않습니다. 영문, 숫자, 특수문자 조합 8자 이상으로 설정해 주세요.');
       return;
     }
 
@@ -122,12 +188,30 @@ export default function SignUpForm() {
 
         <Text style={styles.label}>비밀번호</Text>
         <TextInput
-          placeholder="비밀번호"
+          placeholder="비밀번호 (영문, 숫자, 특수문자 조합 8자 이상)"
           value={password}
           onChangeText={setPassword}
           style={styles.input}
           secureTextEntry
         />
+        {password.length > 0 && (
+          <View style={styles.strengthContainer}>
+            <View style={styles.strengthBarRow}>
+              <View style={[styles.strengthBar, { backgroundColor: getPasswordStrength(password).score >= 1 ? getPasswordStrength(password).color : '#e9ecef' }]} />
+              <View style={[styles.strengthBar, { backgroundColor: getPasswordStrength(password).score >= 2 ? getPasswordStrength(password).color : '#e9ecef' }]} />
+              <View style={[styles.strengthBar, { backgroundColor: getPasswordStrength(password).score >= 3 ? getPasswordStrength(password).color : '#e9ecef' }]} />
+            </View>
+            <Text style={[styles.strengthLabel, { color: getPasswordStrength(password).color }]}>
+              보안 등급: {getPasswordStrength(password).label}
+            </Text>
+          </View>
+        )}
+        {password.length > 0 && !/^(?=.*[a-zA-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{8,}$/.test(password) && (
+          <Text style={styles.errorMessage}>영문, 숫자, 특수문자를 혼합하여 8자 이상이어야 합니다.</Text>
+        )}
+        {password.length > 0 && /^(?=.*[a-zA-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{8,}$/.test(password) && (
+          <Text style={styles.successMessage}>안전한 비밀번호입니다.</Text>
+        )}
 
         <Text style={styles.label}>비밀번호 확인</Text>
         <TextInput
@@ -417,5 +501,24 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#495057',
     fontWeight: '500',
+  },
+  strengthContainer: {
+    marginTop: -8,
+    marginBottom: 16,
+  },
+  strengthBarRow: {
+    flexDirection: 'row',
+    gap: 4,
+    height: 4,
+    marginBottom: 6,
+  },
+  strengthBar: {
+    flex: 1,
+    height: '100%',
+    borderRadius: 2,
+  },
+  strengthLabel: {
+    fontSize: 12,
+    fontWeight: 'bold',
   },
 });

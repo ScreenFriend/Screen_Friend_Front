@@ -7,12 +7,43 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserProfileModal from '../../components/UserProfileModal';
+import PortOneAuthWebView from '../../features/auth/components/PortOneAuthWebView';
 
 export default function ChatScreen() {
   const { joinPostId, title } = useLocalSearchParams();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user } = useAuth();
+  const { user, isPhoneVerified, checkLogin } = useAuth();
+
+  const [authModalVisible, setAuthModalVisible] = useState(false);
+
+  const handleAuthSuccess = async (identityVerificationId: string) => {
+    setAuthModalVisible(false);
+    if (!user) return;
+    try {
+      await apiService.verifySocialUser(user.id, identityVerificationId);
+      Alert.alert('인증 성공', '휴대폰 본인인증이 완료되었습니다.');
+      await checkLogin();
+    } catch (e: any) {
+      console.log('소셜 본인인증 연동 실패:', e);
+      const errorMsg = e.response?.data?.message || '본인인증 연동 처리에 실패했습니다.';
+      Alert.alert('인증 연동 실패', errorMsg);
+    }
+  };
+
+  const handleInputPress = () => {
+    if (!isPhoneVerified) {
+      Keyboard.dismiss();
+      Alert.alert(
+        '본인인증 필요',
+        '채팅 메시지 전송을 위해 최초 1회 휴대폰 본인인증이 필요합니다.',
+        [
+          { text: '취소', style: 'cancel' },
+          { text: '인증하기', onPress: () => setAuthModalVisible(true) }
+        ]
+      );
+    }
+  };
 
   const [loading, setLoading] = useState(true);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -221,6 +252,8 @@ export default function ChatScreen() {
           placeholderTextColor="#adb5bd"
           editable={isConnected}
           multiline
+          onFocus={handleInputPress}
+          onTouchStart={handleInputPress}
         />
         <TouchableOpacity 
           style={[styles.sendBtn, !inputText.trim() && styles.disabledSendBtn]} 
@@ -239,6 +272,15 @@ export default function ChatScreen() {
         userId={selectedUserId}
         isVisible={profileModalVisible}
         onClose={() => setProfileModalVisible(false)}
+      />
+      <PortOneAuthWebView
+        visible={authModalVisible}
+        onClose={() => setAuthModalVisible(false)}
+        onSuccess={handleAuthSuccess}
+        onFailure={(msg) => {
+          setAuthModalVisible(false);
+          Alert.alert('본인인증 실패', msg);
+        }}
       />
     </KeyboardAvoidingView>
   );

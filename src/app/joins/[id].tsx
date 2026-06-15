@@ -7,12 +7,29 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserProfileModal from '../../components/UserProfileModal';
+import PortOneAuthWebView from '../../features/auth/components/PortOneAuthWebView';
 
 export default function JoinDetailScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user } = useAuth(); // 로그인 유저 세션 획득
+  const { user, isPhoneVerified, checkLogin } = useAuth(); // 로그인 유저 세션 및 인증 여부 획득
+
+  const [authModalVisible, setAuthModalVisible] = useState(false);
+
+  const handleAuthSuccess = async (identityVerificationId: string) => {
+    setAuthModalVisible(false);
+    if (!user) return;
+    try {
+      await apiService.verifySocialUser(user.id, identityVerificationId);
+      Alert.alert('인증 성공', '휴대폰 본인인증이 완료되었습니다.');
+      await checkLogin();
+    } catch (e: any) {
+      console.log('소셜 본인인증 연동 실패:', e);
+      const errorMsg = e.response?.data?.message || '본인인증 연동 처리에 실패했습니다.';
+      Alert.alert('인증 연동 실패', errorMsg);
+    }
+  };
 
   const [loading, setLoading] = useState(true);
   const [post, setPost] = useState<JoinPostResponse | null>(null);
@@ -71,6 +88,19 @@ export default function JoinDetailScreen() {
   // 참가 신청 쏘기 (일반 유저)
   const handleApply = async () => {
     if (!post) return;
+    
+    if (!isPhoneVerified) {
+      Alert.alert(
+        '본인인증 필요',
+        '조인 참가 신청을 위해 최초 1회 휴대폰 본인인증이 필요합니다.',
+        [
+          { text: '취소', style: 'cancel' },
+          { text: '인증하기', onPress: () => setAuthModalVisible(true) }
+        ]
+      );
+      return;
+    }
+
     setActionLoading(true);
     try {
       await apiService.applyJoin(post.id);
@@ -658,6 +688,15 @@ export default function JoinDetailScreen() {
         userId={selectedUserIdForModal}
         isVisible={profileModalVisible}
         onClose={() => setProfileModalVisible(false)}
+      />
+      <PortOneAuthWebView
+        visible={authModalVisible}
+        onClose={() => setAuthModalVisible(false)}
+        onSuccess={handleAuthSuccess}
+        onFailure={(msg) => {
+          setAuthModalVisible(false);
+          Alert.alert('본인인증 실패', msg);
+        }}
       />
     </View>
   );

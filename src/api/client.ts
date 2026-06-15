@@ -39,10 +39,12 @@ apiClient.interceptors.response.use(
     return response;
   },
   async (error) => {
+    const isFindPasswordRequest = error.config && error.config.url && error.config.url.includes('/api/users/find-password');
+    const isFindIdRequest = error.config && error.config.url && error.config.url.includes('/api/users/find-id');
     const isUnauthorized = error.response && error.response.status === 401;
     const isUserNotFound = error.response && error.response.status === 404 && error.response.data?.code === 'USER-003';
 
-    if (isUnauthorized || isUserNotFound) {
+    if ((isUnauthorized || isUserNotFound) && !isFindPasswordRequest && !isFindIdRequest) {
       console.log('[apiClient] 무효한 세션(401/404) 감지. 세션 초기화 진행...');
       try {
         await SecureStore.deleteItemAsync('userToken');
@@ -202,6 +204,12 @@ export const apiService = {
   // 포트원 검증 API
   verifyPortOne: async (identityVerificationId: string): Promise<{ name: string; phone: string; gender: string }> => {
     const response = await apiClient.post('/api/auth/portone/verify', { identityVerificationId });
+    return response.data;
+  },
+  verifySocialUser: async (id: number, identityVerificationId: string): Promise<UserResponse> => {
+    const response = await apiClient.post<UserResponse>(`/api/users/${id}/social-verify`, null, {
+      params: { identityVerificationId }
+    });
     return response.data;
   },
 

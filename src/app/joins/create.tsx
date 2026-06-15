@@ -7,6 +7,8 @@ import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/dat
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiService } from '../../api/client';
+import { useAuth } from '../../contexts/AuthContext';
+import PortOneAuthWebView from '../../features/auth/components/PortOneAuthWebView';
 
 const { width, height } = Dimensions.get('window');
 
@@ -33,6 +35,24 @@ export default function CreateJoinScreen() {
 
   // 등록 스텝 (0: 지도 및 골프장 선택, 1: 상세 정보 입력)
   const [step, setStep] = useState<number>(0);
+
+  // 본인인증 관련
+  const { isPhoneVerified, user, checkLogin } = useAuth();
+  const [authModalVisible, setAuthModalVisible] = useState(false);
+
+  const handleAuthSuccess = async (identityVerificationId: string) => {
+    setAuthModalVisible(false);
+    if (!user) return;
+    try {
+      await apiService.verifySocialUser(user.id, identityVerificationId);
+      Alert.alert('인증 성공', '휴대폰 본인인증이 완료되었습니다.');
+      await checkLogin();
+    } catch (e: any) {
+      console.log('소셜 본인인증 연동 실패:', e);
+      const errorMsg = e.response?.data?.message || '본인인증 연동 처리에 실패했습니다.';
+      Alert.alert('인증 연동 실패', errorMsg);
+    }
+  };
 
   // 폼 입력 상태
   const [title, setTitle] = useState('');
@@ -351,7 +371,20 @@ export default function CreateJoinScreen() {
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    onPress={() => setStep(1)}
+                    onPress={() => {
+                      if (!isPhoneVerified) {
+                        Alert.alert(
+                          '본인인증 필요',
+                          '조인 개설을 위해 최초 1회 휴대폰 본인인증이 필요합니다.',
+                          [
+                            { text: '취소', style: 'cancel' },
+                            { text: '인증하기', onPress: () => setAuthModalVisible(true) }
+                          ]
+                        );
+                        return;
+                      }
+                      setStep(1);
+                    }}
                     style={styles.nextButton}
                   >
                     <Text style={styles.nextButtonText}>이 지점으로 조인 개설</Text>
@@ -542,6 +575,15 @@ export default function CreateJoinScreen() {
         </ScrollView>
       )}
       </View>
+      <PortOneAuthWebView
+        visible={authModalVisible}
+        onClose={() => setAuthModalVisible(false)}
+        onSuccess={handleAuthSuccess}
+        onFailure={(msg) => {
+          setAuthModalVisible(false);
+          Alert.alert('본인인증 실패', msg);
+        }}
+      />
     </KeyboardAvoidingView>
   );
 }
