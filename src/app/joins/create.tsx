@@ -93,9 +93,15 @@ export default function CreateJoinScreen() {
           return;
         }
 
-        const loc = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
+        let loc = await Location.getLastKnownPositionAsync();
+        if (!loc) {
+          console.log('[CreateJoinScreen] getLastKnownPositionAsync 결과가 없어 getCurrentPositionAsync(Low)를 호출합니다.');
+          loc = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Low,
+          });
+        } else {
+          console.log('[CreateJoinScreen] getLastKnownPositionAsync를 사용하여 위치를 즉시 획득했습니다:', loc.coords);
+        }
 
         const current = {
           latitude: loc.coords.latitude,
